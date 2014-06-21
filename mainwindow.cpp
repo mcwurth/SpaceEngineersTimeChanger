@@ -1,3 +1,31 @@
+/*****************************************************************************
+ * SpaceEngineersBuildTimeChanger                                            *
+ *                                                                           *
+ * Author  : CptRomain                                                       *
+ * Contact : cptromain@gmail.com                                             *
+ * Version : 1.0                                                             *
+ *                                                                           *
+ * Description : This program allow the players of Space Engineers to change *
+ * the speed of the Welding by changing some values in a XML file in a       *
+ * game's directory.                                                         *
+ *                                                                           *
+ * Copyright (C) SpaceEngineersBuildTimeChanger CptRomain                    *
+ *                                                                           *
+ * This program is free software; you can redistribute it and/or             *
+ * modify it under the terms of the GNU General Public License               *
+ * as published by the Free Software Foundation; either version 2            *
+ * of the License, or (at your option) any later version.                    *
+ *                                                                           *
+ * This program is distributed in the hope that it will be useful,           *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
+ * GNU General Public License for more details.                              *
+ *                                                                           *
+ * You should have received a copy of the GNU General Public License         *
+ * a long with this program; if not, write to the Free Software              *
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,*
+ * USA.                                                                      *
+ *****************************************************************************/
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QFileDialog>
@@ -5,6 +33,8 @@
 #include <QFile>
 #include <QXmlStreamReader>
 #include <QTextStream>
+
+const QString dir = "C:\\Program Files (x86)\\Steam\\SteamApps\\common\\SpaceEngineers\\Content\\Data\\";
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -15,6 +45,10 @@ MainWindow::MainWindow(QWidget *parent) :
     // Connections
     QObject::connect(ui->browseButton, SIGNAL(clicked()), this, SLOT(openDlg()));
     QObject::connect(ui->doButton, SIGNAL(clicked()), this, SLOT(doTheJob()));
+
+    // Set clickable label
+    ui->webLabel->setText("<a href='https://github.com/CptRomain/SpaceEngineersTimeChanger'>https://github.com/CptRomain/SpaceEngineersTimeChanger</a>");
+    ui->webLabel->setOpenExternalLinks(true);
 }
 
 MainWindow::~MainWindow()
@@ -24,13 +58,14 @@ MainWindow::~MainWindow()
 
 void MainWindow::openDlg()
 {
-    QString file = QFileDialog::getOpenFileName(this, "Choose the file", QString(), "CubeBlocks (CubeBlocks.sbc)");
+    QString file = QFileDialog::getOpenFileName(this, "Choose the file",dir , "CubeBlocks (CubeBlocks.sbc)");
+
     ui->filePath->setText(file);
 }
 
 void MainWindow::doTheJob()
 {
-    bool errorDivider, errorPath = false;
+    bool errorDivider = false, errorPath = false;
 
     // Check if the number in divider is correct
     foreach (QChar c, ui->divider->text()) {
@@ -58,70 +93,80 @@ void MainWindow::doTheJob()
     // If no error, do the job
     if (!errorDivider && !errorPath) {
         float divider = ui->divider->text().toFloat();
-        QString filePath(ui->filePath->text());
+        QString filePath(ui->filePath->text());       
 
+        // Make a backup keeping all backup files
+        QString fileBackup = filePath + ".bak";
+        int j = 1;
+        while (QFile::exists(fileBackup)) {
+            fileBackup = filePath + ".bak" + QString::number(j);
+            j++;
+        }
+        QFile::copy(filePath, fileBackup);
+
+        // Start doing the job
         QFile inputFile(filePath);
 
         if(inputFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream flux(&inputFile);
-            QString text;
 
-            QString newFileContent;
+            QTextStream stream(&inputFile);
 
-            //int lineNumber = inputFile.readAll().count();
+            // Vars
+            QString text, newFileContent, newLine, buildTimeStr;
+            int i, spaces, positionStart, positionEnd;
+            float newBuildTime;
 
-            while(!flux.atEnd())
+            while(!stream.atEnd())
             {
-                text = flux.readLine();
+                // Reset vars
+                text = stream.readLine();
+                newLine.clear();
+                buildTimeStr.clear();
 
                 // Check if it's the correct key
                 if (text.contains("<BuildTimeSeconds>", Qt::CaseInsensitive)) {
-                    //int spaces = text.indexOf("<") - 1;
-                    int positionStart = text.indexOf(">") + 1;
-                    int positionEnd = text.indexOf("</") - 1;
 
-                    QString buildTimeStr;
+                    spaces = text.indexOf("<");
+                    positionStart = text.indexOf(">") + 1;
+                    positionEnd = text.indexOf("</") - 1;
 
-                    for (int i = positionStart; i <= positionEnd; i++) {
+                    // Get the time writed in the file
+                    for (i = positionStart; i <= positionEnd; i++) {
                         buildTimeStr += text[i];
                     }
 
-                    float newBuildTime = (buildTimeStr.toFloat()) / divider;
+                    // Do the division
+                    newBuildTime = (buildTimeStr.toFloat()) / divider;
 
-                    QString newLine;
-
-                    // Add spaces
-                    for (int i = 0; i < positionStart; i++) {
+                    // Add spaces to the new line
+                    for (i = 0; i < spaces; i++) {
                         newLine += " ";
                     }
 
                     // Construct new line
                     newLine += "<BuildTimeSeconds>" + QString::number(newBuildTime, 'f', 2) + "</BuildTimeSeconds>";
 
+                    // Write the modified line
                     newFileContent += newLine + '\n';
-                    //ui->resultText->appendPlainText(newLine);
 
                 } else {
+                    //If it's not the build time line, write it
                     newFileContent += text + '\n';
-                    //ui->resultText->appendPlainText(text);
                 }
 
             }
+            // Close original file
             inputFile.close();
 
-            QString savePath = QFileDialog::getSaveFileName(this, tr("Save File"), "/tmp/text.sbc", tr("CubeBlocks (*.sbc)"));
-
+            // Save the new file
+            QString savePath = QFileDialog::getSaveFileName(this, tr("Save File"), dir + "CubeBlocksNew.sbc", tr("(*.sbc)"));
             QFile outputFile(savePath);
             outputFile.open(QIODevice::ReadWrite | QIODevice::Text);
-
             QTextStream out(&outputFile);
-
             out.operator <<(newFileContent);
-
-            //outputFile.write(ui->resultText->toPlainText());
-
             outputFile.close();
-
+        } else {
+            QMessageBox::warning(this, "Reading error", "The file could not be opened.");
         }
     }
 }
